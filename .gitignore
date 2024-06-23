@@ -1,0 +1,10 @@
+bin/*
+obj/*
+*.sln
+*/*/bin/*
+*/*/obj/*
+.vs/*
+*/.vs/*
+*.user
+Setup/Release/*
+Setup/Debug/*
