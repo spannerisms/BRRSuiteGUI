@@ -14,6 +14,7 @@
     <Company>kan</Company>
     <Authors>kan</Authors>
     <Title>BRR Suite GUI</Title>
+    <ApplicationIcon>Resources\brslogo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -27,6 +28,10 @@
 
   <ItemGroup>
     <None Remove="version.xml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\brslogo.ico" />
   </ItemGroup>
 
   <ItemGroup>

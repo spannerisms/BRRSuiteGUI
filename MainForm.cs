@@ -79,7 +79,7 @@ public sealed partial class MainForm : Form {
 
 		try {
 			var newXml = new XmlDocument();
-			newXml.Load(XmlReader.Create("https://raw.githubusercontent.com/spannerisms/BRRSuiteGUI/release/version.xml"));
+			newXml.Load(XmlReader.Create("https://raw.githubusercontent.com/spannerisms/BRRSuiteGUI/main/version.xml"));
 			availableVersion = MakeVersion(newXml);
 		} catch {
 			availableVersion = null; // give up
