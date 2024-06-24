@@ -15,7 +15,7 @@ Here's a rough step-by-step of what I do:
 1. Create or open a WAV file in [https://www.audacityteam.org/](Audacity) or another similarly-featureful tool.
 2. Modify the WAV to suit your needs. This sublist details my preferences:
      - Change the project rate to 32000 Hz, only because that maps better to the BRR output
-     - Trim as many leading 0s off the from of the sample (although BRR Suite can also do that now)
+     - Trim leading 0s off the front of the sample (although BRR Suite can also do that now)
      - Truncate the sample to about 0.1 seconds. Longer files end up too big for my tastes after conversion. BRR Suite (and BRRtools) can truncate the file themselves, but I find it easier to work with when it's smaller.
      - Use Effect>Normalize to remove any DC offset
      - Use Effect>Amplify to make the waveform as loud as possible
@@ -23,7 +23,7 @@ Here's a rough step-by-step of what I do:
 4. Set the `Trim to` field to a 0 or close-to-zero sample, with the number found using Audacity. This should give enough room for the waveform to loop nicely, but ideally as close to the beginning as possible for a smaller output.
 5. Set the `First loop sample` field to a 0 or close-to-zero sample as close to the beginning as possible that looks like it could smoothly transition in from the selected endpoint.
 6. Click `Create loop candidates`
-7. Trawl through all the candidates in the `Listen` box. If any candidate sounds good or close to good, I write down its `Loop start input` in the box labeled `SCRATCH`
+7. Trawl through all the candidates in the `Listen` box. If any candidate sounds good or close to good, I write down its `Loop start input` in the `SCRATCH` area.
 8. After every candidate has been listened to, take one value from the SCRATCH area and set it as the `Loop sample` in the `Fine adjustments` box.
 9. Listen to the samples generated for any that sound perfect, not just "good". If a perfect sample is found:
      - Re-examine the audio for any quiet buzzing or other anomalies.
@@ -98,7 +98,7 @@ Cons of lower frequencies:
 
 **`Treble boost`** - Selects a treble boost filter to compensate for the Gaussian low pass of the SNES.
 
-**`Force silence at start`** - Forces block 0 of the BRR to be all silent samples, allowing the first block of audio to use any filter. This may produce marginally better samples at the expensive of size.
+**`Force silence at start`** - Forces block 0 of the BRR to be all silent samples, allowing the first block of audio to use any filter. This may produce marginally better samples at the expense of size.
 
 ## Loop search
 The loop search functionality allows you to prospect a large number of candidate loop points starting from a given point.
@@ -116,7 +116,7 @@ The loop search functionality allows you to prospect a large number of candidate
 For example, with a `First loop sample` of 100, an `Attempt count` of 3, an `Increment` of 10 and a `Range` of 2, the following samples will be attempted as the loop point:
 > [98, 99, **100**, 101, 102], [108, 109, **110**, 111, 112], [118, 119, **120**, 121, 122]
 
-Any loop sample points that fall outside the range of the sample will be skipped.
+Any loop sample points that fall outside the range of the sample as a whole will be skipped.
 
 As candidates are created, they will populate the candidates list in the `Listen` area named as: `<wavname>_<kHz>_<loopsample>`.
 
@@ -148,6 +148,6 @@ As candidates are created, they will populate the candidates list in the `Listen
 
 **`Export BRR`** - Exports a BRR file with the extension `.brr` to the output directory.
 
-BRR samples can be exported in three different formats, which are detailed in the [Library's README](https://github.com/spannerisms/BRRSuite/README.md)
+BRR samples can be exported in three different formats, which are detailed in the [Library's README](https://github.com/spannerisms/BRRSuite/blob/main/README.md)
 
 **`Export WAV`** - Exports the preview audio with the extension `.wav` to the output directory.
