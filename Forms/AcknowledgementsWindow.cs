@@ -16,7 +16,7 @@ public partial class AcknowledgementsWindow : Form {
 		Process.Start("explorer.exe", "https://github.com/tewtal/mITroid/blob/master/mITroid/NSPC/BRR.cs/");
 	}
 
-	private void pictureBox1_Click(object sender, EventArgs e) {
+	private void IClickedTheLogo(object sender, EventArgs e) {
 		Process.Start("explorer.exe", "https://github.com/spannerisms/BRRSuiteGUI/");
 	}
 }

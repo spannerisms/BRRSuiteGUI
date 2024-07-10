@@ -14,6 +14,7 @@
     <Company>kan</Company>
     <Authors>kan</Authors>
     <Title>BRR Suite GUI</Title>
+    <ApplicationIcon>Resources\brslogo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -26,7 +27,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Resources\brrsuiteengine.bin" />
     <None Remove="version.xml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\brslogo.ico" />
   </ItemGroup>
 
   <ItemGroup>
@@ -60,6 +66,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="libaubio-5.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
@@ -71,6 +80,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Resources\logofull.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="testengine.bin">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

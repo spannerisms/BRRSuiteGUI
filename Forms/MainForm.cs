@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Xml;
 
 namespace BRRSuiteGUI;
@@ -22,8 +23,6 @@ public sealed partial class MainForm : Form {
 	private CancellationTokenSource CancelSource = new();
 	private CancellationToken CancelToken => CancelSource.Token;
 
-
-
 	/*************************************************************************************************\
 	* Initialization
 	\*************************************************************************************************/
@@ -33,7 +32,6 @@ public sealed partial class MainForm : Form {
 		MinimumSize = Size;
 		InitializeMore();
 	}
-
 
 	private record AppVersion(int Major, int Minor, int Build) {
 		public override string ToString() => $"v{Major}.{Minor}.{Build}";
@@ -65,10 +63,25 @@ public sealed partial class MainForm : Form {
 	private const string UnknownVersion = "v?.?.?";
 	internal static string VersionString => thisVersion?.ToString() ?? UnknownVersion;
 
+	private static readonly byte[]? engineBase;
+
+	private static readonly string AppDirectory;
 
 	static MainForm() {
-		// find the current app version the 
+		AppDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
+		// try to get the test SPC engine
+		try {
+			using var rd = new FileStream($"{AppDirectory}/testengine.bin", FileMode.Open, FileAccess.Read);
+			// Verify WAV
+			engineBase = new byte[(int) rd.Length];
+			rd.Read(engineBase, 0, engineBase.Length);
+		} catch {
+			// give up
+			engineBase = null;
+		}
+
+		// find the current app version
 		try {
 			var thisXml = new XmlDocument();
 			thisXml.LoadXml(Properties.Resources.version);
@@ -77,44 +90,41 @@ public sealed partial class MainForm : Form {
 			thisVersion = null; // give up
 		}
 
+#if DEBUG
+		availableVersion = new(0, 0, 0);
+#else
+		// find the available version
 		try {
 			var newXml = new XmlDocument();
-			newXml.Load(XmlReader.Create("https://raw.githubusercontent.com/spannerisms/BRRSuiteGUI/release/version.xml"));
+			newXml.Load(XmlReader.Create("https://raw.githubusercontent.com/spannerisms/BRRSuiteGUI/main/version.xml"));
 			availableVersion = MakeVersion(newXml);
 		} catch {
 			availableVersion = null; // give up
 		}
+#endif
 
-
+		// local function to parse them the same way
 		static AppVersion? MakeVersion(XmlDocument xml) {
 			try {
 				var vnode = xml.SelectSingleNode("//version");
 
-				if (vnode?.Attributes is not XmlAttributeCollection attrs) {
-					return null;
-				}
+				if (vnode?.Attributes is not XmlAttributeCollection attrs) return null;
 
-				// get each version number
-				if (!int.TryParse(attrs["major"]?.Value, out int maj)) {
-					return null; // if any fail, give up
-				}
-
-				if (!int.TryParse(attrs["minor"]?.Value, out int min)) {
-					return null;
-				}
-
-				if (!int.TryParse(attrs["build"]?.Value, out int bld)) {
-					return null;
-				}
+				// get each version number; if any fail, give up
+				if (!int.TryParse(attrs["major"]?.Value, out int maj)) return null;
+				if (!int.TryParse(attrs["minor"]?.Value, out int min)) return null;
+				if (!int.TryParse(attrs["build"]?.Value, out int bld)) return null;
 
 				return new(maj, min, bld);
 
 			} catch {
-				// if any problems occur, just return null
-				return null;
+				return null; // if any problems occur, just return null
 			}
-		}
+		} // end local
 	}
+
+
+	private readonly WaveformWindow waveWindow = new() { Visible = false };
 
 
 	private void InitializeMore() {
@@ -125,8 +135,6 @@ public sealed partial class MainForm : Form {
 
 		OutputInterpolationBox.DataSource = new ItemWithName[] {
 			new("Nearest neighbor", ResamplingAlgorithms.NoInterpolation),
-			new("Linear", ResamplingAlgorithms.LinearInterpolation),
-			new("Sinusoidal", ResamplingAlgorithms.SineInterpolation),
 			new("Cubic", ResamplingAlgorithms.CubicInterpolation),
 			new("Band-limited", ResamplingAlgorithms.BandlimitedInterpolation),
 		};
@@ -145,20 +153,21 @@ public sealed partial class MainForm : Form {
 
 		TrebleBoostFilterBox.SelectedIndex = 0;
 
-		AdjustRangeBox.MouseWheel += NumberBoxMouseWheel;
-		LoopAttemptsBox.MouseWheel += NumberBoxMouseWheel;
-		LoopFindRangeBox.MouseWheel += NumberBoxMouseWheel;
-		LoopIncrementBox.MouseWheel += NumberBoxMouseWheel;
-		LoopStartBox.MouseWheel += NumberBoxMouseWheel;
-		SampleAdjustAtBox.MouseWheel += NumberBoxMouseWheel;
-		TrimPointBox.MouseWheel += NumberBoxMouseWheel;
-
 		ExportNameBox.AcceptsReturn = true;
 		ExportFinalNameBox.AcceptsReturn = true;
 
+		// add button windows
+		WaveformViewButton.Tag = waveWindow;
+		FrequencyCheatsheetButton.Tag = new FrequencyWindow() { Visible = false };
+
+		if (engineBase is null) {
+			ExportTestSongBox.Checked = false;
+			ExportTestSongBox.Enabled = false;
+		}
+
+
 		CheckForUpdates();
 		EnableForm(false);
-
 		OffTextButton();
 
 		static void DisableTabStop(Control cont) {
@@ -171,39 +180,21 @@ public sealed partial class MainForm : Form {
 		}
 	}
 
-	private static void NumberBoxMouseWheel(object? sender, MouseEventArgs e) {
-		if (sender is not NumericUpDown box) return;
+	private readonly UpdateAnnouncer UpdateShower = new();
 
-		if (e is HandledMouseEventArgs f) {
-			f.Handled = true;
-		}
-
-		if (e.Delta > 0) {
-			if (box.Value == box.Maximum) {
-				return;
-			}
-			box.Value++;
-		} else if (e.Delta < 0) {
-			if (box.Value == box.Minimum) {
-				return;
-			}
-			box.Value--;
-		}
-	}
-
-
-	private readonly UpdateAnnouncer announcer = new();
+	private static readonly Color Periwinkle = Color.FromArgb(0xCC, 0xCC, 0xFF);
+	private static readonly Color DarkPeriwinkle = Color.FromArgb(0x64, 0x64, 0xC8);
 
 	private void CheckForUpdates() {
-		announcer.VersionCurrent = thisVersion?.ToString() ?? UnknownVersion;
-		announcer.VersionNew = availableVersion?.ToString() ?? UnknownVersion;
+		UpdateShower.VersionCurrent = thisVersion?.ToString() ?? UnknownVersion;
+		UpdateShower.VersionNew = availableVersion?.ToString() ?? UnknownVersion;
 
 		if (thisVersion is null || availableVersion is null) {
-			UpdateAvailableToolStripMenuItem.BackColor = Color.DarkOrange;
-			UpdateAvailableToolStripMenuItem.ForeColor = SystemColors.ControlText;
+			UpdateAvailableToolStripMenuItem.BackColor = Color.Orange;
+			UpdateAvailableToolStripMenuItem.ForeColor = Color.Maroon;
 			UpdateAvailableToolStripMenuItem.Text = "Problem";
 
-			announcer.Message = (thisVersion, availableVersion) switch {
+			UpdateShower.Message = (thisVersion, availableVersion) switch {
 				(null, null) => "Could not determine the current version or available version.",
 				(null, _) => "Could not determine the current version.",
 				(_, null) => "Could not determine available version.",
@@ -217,28 +208,39 @@ public sealed partial class MainForm : Form {
 
 		if (test < 0) {
 			UpdateAvailableToolStripMenuItem.BackColor = Color.SpringGreen;
-			UpdateAvailableToolStripMenuItem.ForeColor = SystemColors.ControlText;
-			UpdateAvailableToolStripMenuItem.Text = "Updates available";
-			announcer.Message = "A new version is available.";
+			UpdateAvailableToolStripMenuItem.ForeColor = Color.Green;
+			UpdateAvailableToolStripMenuItem.Text = "Update available";
+			UpdateShower.Message = "A new version is available.";
 		} else if (test > 0) {
-			UpdateAvailableToolStripMenuItem.BackColor = Color.Aqua;
-			UpdateAvailableToolStripMenuItem.ForeColor = SystemColors.ControlDark;
+			UpdateAvailableToolStripMenuItem.BackColor = Periwinkle;
+			UpdateAvailableToolStripMenuItem.ForeColor = DarkPeriwinkle;
 			UpdateAvailableToolStripMenuItem.Text = "Beta";
-			announcer.Message = "It appears you have an unreleased version.";
+			UpdateShower.Message = "It appears you have an unreleased version.";
 		} else {
-			UpdateAvailableToolStripMenuItem.BackColor = SystemColors.Control;
-			UpdateAvailableToolStripMenuItem.ForeColor = SystemColors.ControlDark;
+			UpdateAvailableToolStripMenuItem.BackColor = Color.Silver;
+			UpdateAvailableToolStripMenuItem.ForeColor = Color.DimGray;
 			UpdateAvailableToolStripMenuItem.Text = "No updates";
-			announcer.Message = "Your application is up to date.";
+			UpdateShower.Message = "Your application is up to date.";
 		}
 	}
 
 	private void UpdateAvailableToolStripMenuItem_Click(object sender, EventArgs e) {
-		announcer.ShowDialog();
+		UpdateShower.ShowDialog();
 	}
 
+	private readonly AdvancedSettingsWindow AdvancedWindow = new();
+	private decimal DecodeMinimumLength = 1.5M;
+	private int MinimumTrimZeros = 3;
 
+	private void AdvancedButtonClick(object sender, EventArgs e) {
+		AdvancedWindow.PreviewDuration = DecodeMinimumLength;
+		AdvancedWindow.MinimumTrimZeros = MinimumTrimZeros;
 
+		if (AdvancedWindow.ShowDialog() is DialogResult.OK) {
+			DecodeMinimumLength = decimal.Round(AdvancedWindow.PreviewDuration, 1);
+			MinimumTrimZeros = AdvancedWindow.MinimumTrimZeros;
+		}
+	}
 
 	/*************************************************************************************************\
 	* User communication
@@ -270,11 +272,11 @@ public sealed partial class MainForm : Form {
 	}
 
 	private static string GetFormattedSize(int blocks) =>
-		string.Format("{0} blocks - {1} bytes (${1:X4})", blocks, BrrBlockSize * blocks);
+		string.Format("{0} block{2} - {1} bytes (${1:X4})", blocks, Conversion.BRRBlockSize * blocks, blocks == 1 ? "" : "s");
 
 	private static string GetFormattedLoopPoint(int blocks) => blocks switch {
 		< 0 => "-",
-		_ => string.Format("{0} blocks (${1:X4})", blocks, BrrBlockSize * blocks)
+		_ => string.Format("{0} block{2} (${1:X4})", blocks, Conversion.BRRBlockSize * blocks, blocks == 1 ? "" : "s")
 	};
 
 
@@ -304,7 +306,6 @@ public sealed partial class MainForm : Form {
 		EnableForm(enable);
 	}
 
-
 	private void SetOutputDirectory(string path) {
 		OutputDirectory = null;
 
@@ -324,10 +325,22 @@ public sealed partial class MainForm : Form {
 		OffTextButton();
 	}
 
+	private void AddCandidateToBox(TestContainer brr) {
+		BRRTestBox.Items.Add(brr);
+	}
+
+	private void ClearFileListConditional() {
+		if (ClearWhenGenButton.Checked) {
+			ClearFileList();
+		}
+	}
+
 	private void ClearFileList() {
-		Player.Stop();
+		StopSamplePreview();
 		CurrentBRR = null;
 		BRRTestBox.Items.Clear();
+		BRRTestBox.SelectedIndex = -1;
+		ClearPreviewInfo();
 	}
 
 	private const string InvalidChars = @"<>:""/\|?*[]{}";
@@ -380,7 +393,6 @@ public sealed partial class MainForm : Form {
 		t.Text = text;
 	}
 
-
 	/*************************************************************************************************\
 	* Async tasks
 	\*************************************************************************************************/
@@ -390,7 +402,7 @@ public sealed partial class MainForm : Form {
 		try {
 			await func();
 		} catch (OperationCanceledException) {
-			// Do nothing
+			// Task was cancelled. Everything is fine.
 		} catch (Exception f) {
 			ShowError(f.Message);
 		}
@@ -432,7 +444,13 @@ public sealed partial class MainForm : Form {
 	* Input area methods and events
 	\*************************************************************************************************/
 	private void FindZeroesButton_Click(object sender, EventArgs e) {
-		CheckForWave();
+		try {
+			CheckForWave();
+		} catch (Exception x) {
+			ZeroCrossingBox.Text = string.Empty;
+			ShowError(x.Message);
+			return;
+		}
 
 		var crossings = new List<int>();
 		int min = (int) LoopStartBox.Value;
@@ -458,6 +476,27 @@ public sealed partial class MainForm : Form {
 	/*************************************************************************************************\
 	* General conversion methods and events
 	\*************************************************************************************************/
+#pragma warning disable IDE0079 // shut up
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance",
+		"CA1859:Use concrete types when possible for improved performance",
+		Justification = "We'll have other encoders eventually.")]
+	private BRREncoder GetCurrentEncoder() {
+		BRRtoolsEncoder ret = new() {
+			Resampler = GetCurrentResamplingAlgorithm(),
+			Filters = GetFilters(),
+			EnableFilter0 = true,
+			EnableFilter1 = true,
+			EnableFilter2 = true,
+			EnableFilter3 = true,
+			LeadingZeros = TrimZerosBox.Checked ? MinimumTrimZeros : -1,
+			ResampleFactor = CurrentSampleRate.ResampleFrom(CurrentWAV!.SampleRate),
+			Truncate = (int) TrimPointBox.Value,
+		};
+
+		return ret;
+	}
+#pragma warning restore IDE0079
+
 	private ResamplingAlgorithm GetCurrentResamplingAlgorithm() {
 		var temp = OutputInterpolationBox.SelectedItem as ItemWithName;
 
@@ -473,89 +512,77 @@ public sealed partial class MainForm : Form {
 	}
 
 	private void SampleBox_SelectedIndexChanged(object sender, EventArgs e) {
-		CurrentSampleRate = (ResampleBox.SelectedItem as SampleRate) ?? SampleRate.SR32000;
+		CurrentSampleRate = (ResampleBox.SelectedItem as SampleRate?) ?? SampleRate.SR32000;
 		RecalculateNumberOfBRRBlocks();
 	}
-
 
 	private async void CreateUnloopedButton_Click(object sender, EventArgs e) {
 		await RunGUITask(UnloopedFiles);
 	}
 
+	private PreEncodingFilter GetFilters() {
+		PreEncodingFilter ret = PreEncodingFilters.NoFilter;
 
-	private EncodingAlgorithm GetEncoder() {
-		return Conversion.GetBRRtoolsBruteForce(FilterSilenceBox.Checked, false, false, false, false);
-	}
-
-	private PreEncodingFilter[]? GetFilters() {
 		if (TrebleBoostFilterBox.SelectedItem is ItemWithName i) {
 			if (i.Thing is PreEncodingFilter j) {
-				return [j];
+				ret += j;
 			}
 		}
 
-		return null;
+		return ret;
 	}
-
 
 	private async Task UnloopedFiles() {
 		CheckForWave();
 
-		ClearFileList();
-
-		int trim = (int) TrimPointBox.Value;
-		bool trimFront = TrimZerosBox.Checked;
-
-		ResamplingAlgorithm outResamp = GetCurrentResamplingAlgorithm();
+		ClearFileListConditional();
 
 		string sampleName = wavName;
 
 		NewTaskBarThing(2 * sampleRates.Count);
 
-		int[] wavSamples = CurrentWAV!.GetSamplesCopy();
-		var encoder = GetEncoder();
-		var filters = GetFilters();
+		int[] wavSamples = CurrentWAV!.SamplesToArray();
+		BRREncoder enc = GetCurrentEncoder();
+		bool freqEst = EstimatedFrequencyBox.Checked;
 
+		var tasks = new List<Task>();
 		foreach (var freq in sampleRates) {
-			decimal resampleFactorBRR = CurrentWAV.SampleRate.ResampleTo(freq);
+			CancelToken.ThrowIfCancellationRequested();
+
+			enc.ResampleFactor = CurrentSampleRate.ResampleFrom(freq);
 
 			BRRSample brr = await Task.Run(() =>
-				Conversion.Encode(
-					wavSamples: wavSamples,
-					encoder: encoder,
-					resampleAlgorithm: outResamp,
-					resampleFactor: resampleFactorBRR,
-					truncate: trim,
-					waveFilters: filters,
-					trimLeadingZeroes: trimFront,
-					loopStart: NoLoop
+				enc.Encode(
+					pcmSamples: wavSamples,
+					pcmLoopPoint: Conversion.NoLoop
 				));
-
-			brr.EncodingFrequency = freq.Frequency;
 
 			TaskProgress.PerformStep();
 			CancelToken.ThrowIfCancellationRequested();
 
 			WaveContainer wavOut = await Task.Run(() =>
-				Conversion.Decode(
-					brrSample: brr.Data,
-					loopBlock: NoLoop,
-					sampleRate: freq.Frequency,
-					applyGaussian: false
+				brr.Decode(
+					pitch: Conversion.DefaultVxPitch
 				));
 
 			TaskProgress.PerformStep();
-			CancelToken.ThrowIfCancellationRequested();
 
 			TestContainer addbrr = new(sampleName, brr, wavOut) {
 				ListName = $"{sampleName}_{freq.FrequencykHz}",
 				FileName = $"{sampleName}_{freq.FrequencykHz}",
 				LoopSample = null,
-				Trim = trim,
+				EncodingFrequency = freq,
+				Trim = enc.Truncate,
 			};
 
-			BRRTestBox.Items.Add(addbrr);
+			if (freqEst) {
+				tasks.Add(Task.Run(addbrr.DoFrequencyEstimate));
+			}
+
+			AddCandidateToBox(addbrr);
 		}
+
+		await Task.WhenAll(tasks);
 
 		return;
 	}
@@ -571,16 +598,14 @@ public sealed partial class MainForm : Form {
 	private async Task LoopSearch() {
 		CheckForWave();
 
-		ClearFileList();
+		ClearFileListConditional();
 
 		int minLoop = (int) LoopStartBox.Value;
 		int increment = (int) LoopIncrementBox.Value;
 		int attempts = (int) LoopAttemptsBox.Value;
 		int range = (int) LoopFindRangeBox.Value;
-		int maxLoop = attempts * increment + minLoop;
-		bool trimFront = TrimZerosBox.Checked;
+		int maxLoop = (attempts - 1) * increment + minLoop;
 
-		SampleRate freq = CurrentSampleRate;
 		string sampleName = wavName;
 		string outFolder = OutputDirectory!;
 		int trim = (int) TrimPointBox.Value;
@@ -598,62 +623,59 @@ public sealed partial class MainForm : Form {
 
 		CancelToken.ThrowIfCancellationRequested();
 		attemptsList.RemoveAll(r => r < 0 || r >= trim);
-
-		ResamplingAlgorithm outResamp = GetCurrentResamplingAlgorithm();
-		decimal resampleFactorBRR = CurrentWAV!.SampleRate.ResampleTo(CurrentSampleRate);
-		decimal resampleFactorWAV = CurrentSampleRate.ResampleTo(SampleRate.SR32000);
-
 		var loopList = attemptsList.Distinct();
-
 		NewTaskBarThing(2 * loopList.Count());
 
-		int[] wavSamples = CurrentWAV.GetSamplesCopy();
-		var encoder = GetEncoder();
-		var filters = GetFilters();
+		int[] wavSamples = CurrentWAV!.SamplesToArray();
+		bool freqEst = EstimatedFrequencyBox.Checked;
+		decimal minLength = DecodeMinimumLength;
+		SampleRate freq = CurrentSampleRate;
+
+		BRREncoder enc = GetCurrentEncoder();
+
+		// doing each step as an async task and making a wave file for each brr as it's encoded is fast
+		// but it also can't be cancelled, so plbt
+		var tasks = new List<Task>();
 
 		foreach (int loop in loopList) {
 			CancelToken.ThrowIfCancellationRequested();
+
 			BRRSample brr = await Task.Run(() =>
-				Conversion.Encode(
-					wavSamples: wavSamples,
-					encoder: encoder,
-					resampleAlgorithm: outResamp,
-					resampleFactor: resampleFactorBRR,
-					truncate: trim,
-					waveFilters: filters,
-					trimLeadingZeroes: trimFront,
-					loopStart: loop
+				enc.Encode(
+					pcmSamples: wavSamples,
+					pcmLoopPoint: loop
 				));
-
-			brr.EncodingFrequency = freq.Frequency;
-
-			int loopBlock = brr.LoopBlock;
 
 			TaskProgress.PerformStep();
 			CancelToken.ThrowIfCancellationRequested();
 
 			WaveContainer wavOut = await Task.Run(() =>
-				Conversion.Decode(
-					brrSample: brr.Data,
-					loopBlock: loopBlock,
-					sampleRate: freq.Frequency,
-					minimumLength: 2.0M,
-					applyGaussian: false
+				brr.Decode(
+					pitch: Conversion.DefaultVxPitch,
+					minimumLength: minLength
 				));
 
 			TaskProgress.PerformStep();
-			CancelToken.ThrowIfCancellationRequested();
 
 			TestContainer addbrr = new(sampleName, brr, wavOut) {
 				ListName = $"{sampleName}_{freq.FrequencykHz}_{loop}",
-				FileName = $"{sampleName}_{freq.FrequencykHz}_{loopBlock}",
+				FileName = $"{sampleName}_{freq.FrequencykHz}_{brr.LoopBlock}",
 				LoopSample = loop,
-				Trim = trim,
+				EncodingFrequency = freq,
+				Trim = enc.Truncate,
 			};
 
-			BRRTestBox.Items.Add(addbrr);
+
+			if (freqEst) {
+				tasks.Add(Task.Run(addbrr.DoFrequencyEstimate));
+			}
+
+			AddCandidateToBox(addbrr);
 		}
+
+		await Task.WhenAll(tasks);
 	}
+
 
 	/*************************************************************************************************\
 	* Fine adjustment methods and events
@@ -665,7 +687,8 @@ public sealed partial class MainForm : Form {
 
 	private async Task SampleAdjust() {
 		CheckForWave();
-		ClearFileList();
+
+		ClearFileListConditional();
 
 		int loop = (int) SampleAdjustAtBox.Value;
 		int distance = (int) AdjustRangeBox.Value;
@@ -673,73 +696,67 @@ public sealed partial class MainForm : Form {
 		int trimPoint = (int) TrimPointBox.Value;
 		int minTrim = Math.Max(trimPoint - distance, 0);
 		int maxTrim = Math.Min(trimPoint + distance, CurrentWAV!.SampleCount);
-		bool trimFront = TrimZerosBox.Checked;
+
+		NewTaskBarThing(2 * (maxTrim - minTrim + 1));
 
 		ResamplingAlgorithm outResamp = GetCurrentResamplingAlgorithm();
-		decimal resampleFactorBRR = CurrentWAV.SampleRate.ResampleTo(CurrentSampleRate);
 
 		SampleRate freq = CurrentSampleRate;
 		string sampleName = wavName;
 
-		NewTaskBarThing(2 * (maxTrim - minTrim + 1));
+		int[] wavSamples = CurrentWAV.SamplesToArray();
+		bool freqEst = EstimatedFrequencyBox.Checked;
+		decimal minLength = DecodeMinimumLength;
 
-		int[] wavSamples = CurrentWAV.GetSamplesCopy();
-		var encoder = GetEncoder();
-		var filters = GetFilters();
+		BRREncoder enc = GetCurrentEncoder();
 
+		var tasks = new List<Task>();
 		for (int trim = minTrim; trim <= maxTrim; trim++) {
+			CancelToken.ThrowIfCancellationRequested();
+
+			enc.Truncate = trim;
 
 			BRRSample brr = await Task.Run(() =>
-				Conversion.Encode(
-					wavSamples: wavSamples,
-					encoder: encoder,
-					resampleAlgorithm: outResamp,
-					resampleFactor: resampleFactorBRR,
-					trimLeadingZeroes: trimFront,
-					waveFilters: filters,
-					truncate: trim,
-					loopStart: loop
+				enc.Encode(
+					pcmSamples: wavSamples,
+					pcmLoopPoint: loop
 				));
-
-			brr.EncodingFrequency = freq.Frequency;
-			int loopBlock = brr.LoopBlock;
 
 			TaskProgress.PerformStep();
 			CancelToken.ThrowIfCancellationRequested();
 
 			WaveContainer wavOut = await Task.Run(() =>
-				Conversion.Decode(
-					brrSample: brr.Data,
-					loopBlock: loopBlock,
-					sampleRate: freq.Frequency,
-					minimumLength: 2.0M,
-					applyGaussian: false
+				brr.Decode(
+					pitch: Conversion.DefaultVxPitch,
+					minimumLength: minLength
 				));
 
-			CancelToken.ThrowIfCancellationRequested();
+			TaskProgress.PerformStep();
 
 			TestContainer addbrr = new(sampleName, brr, wavOut) {
 				ListName = $"{sampleName}_{freq.FrequencykHz}_p{loop}t{trim}",
-				FileName = $"{sampleName}_{freq.FrequencykHz}_{loopBlock}",
+				FileName = $"{sampleName}_{freq.FrequencykHz}_{brr.LoopBlock}",
 				LoopSample = loop,
-				Trim = trim,
+				EncodingFrequency = freq,
+				Trim = enc.Truncate,
 			};
 
-			BRRTestBox.Items.Add(addbrr);
+			if (freqEst) {
+				tasks.Add(Task.Run(addbrr.DoFrequencyEstimate));
+			}
 
-			TaskProgress.PerformStep();
-			CancelToken.ThrowIfCancellationRequested();
-			this.MdiChildrenMinimizedAnchorBottom = true;
+			AddCandidateToBox(addbrr);
 		}
+
+		await Task.WhenAll(tasks);
 	}
 
 	private void RecalculateNumberOfBRRBlocks() {
 		if (CurrentWAV is null) return;
 
-		int numberOfBlocks = (int) (TrimPointBox.Value / CurrentSampleRate.Cram / PcmBlockSize);
+		int numberOfBlocks = (int) (TrimPointBox.Value / CurrentSampleRate.Cram / Conversion.PCMBlockSize);
 		BRRBlocksBox.Text = GetFormattedSize(numberOfBlocks);
 	}
-
 
 	private string? oldText = null;
 	private void MainForm_DragDrop(object sender, DragEventArgs e) {
@@ -759,6 +776,22 @@ public sealed partial class MainForm : Form {
 		FileNameBox.Text = oldText;
 	}
 
+	private static WaveContainer ReadWaveFromFile(string path) {
+		using var rd = new FileStream(path, FileMode.Open, FileAccess.Read);
+
+		WaveContainer ret;
+
+		try {
+			ret = new(rd);
+		} finally {
+			rd.Close();
+		}
+
+		return ret;
+	}
+
+
+
 	private void SetFile(string path) {
 		string? newText = null;
 		CurrentWAV = null;
@@ -771,11 +804,21 @@ public sealed partial class MainForm : Form {
 			ShowError($"The selected file is not a .{WaveContainer.Extension} file.");
 		} else {
 			try {
-				WaveContainer wav = WaveContainer.ReadFromFile(path);
+				WaveContainer wav = ReadWaveFromFile(path);
 				SetWAV(wav);
 				EnableForm(true);
 				EnableControls(true);
 				SampleAdjustAtBox.Maximum = TrimPointBox.Value = TrimPointBox.Maximum = CurrentWAV!.SampleCount;
+
+				// if the sample is too large, don't detect the pitch and uncheck the sample calc box
+				if (wav.SampleCount > 15000) {
+					InFreqLabel.Text = "-";
+					EstimatedFrequencyBox.Checked = false;
+				} else {
+					double freq = Aubio.Aubio.DetectPitch(wav);
+					InFreqLabel.Text = MusicUtility.GetFormattedFrequency(freq);
+				}
+
 				newText = path;
 				ExportNameBox.Text = Path.GetFileNameWithoutExtension(path);
 			} catch (Exception e) {
@@ -791,7 +834,7 @@ public sealed partial class MainForm : Form {
 
 	private void SetWAV(WaveContainer wav) {
 		CurrentWAV = wav;
-		SampleRateBox.Text = $"{wav.SampleRate.Frequency} Hz";
+		SampleRateBox.Text = $"{wav.SampleRate} Hz";
 		FidelityBox.Text = $"{wav.BitsPerSample} bits per sample";
 		SampleCountBox.Text = $"{wav.SampleCount} samples";
 	}
@@ -800,24 +843,23 @@ public sealed partial class MainForm : Form {
 	* Auxiliary windows
 	\*************************************************************************************************/
 	private readonly AcknowledgementsWindow acknowledgementWindow = new();
-	private void AcknowledgementsToolStripMenuItem_Click(object sender, EventArgs e) {
+	private void Acknowledgements_Click(object sender, EventArgs e) {
 		acknowledgementWindow.ShowDialog();
 	}
 
-	private FrequencyWindow? cheatsheet = null;
-	private void FrequencyCheatsheetToolStripMenuItem_Click(object sender, EventArgs e) {
-		// dumb stuff because I want to only allow 1 open at a time, but not as a modal dialog
-		if (cheatsheet?.IsDisposed ?? true) {
-			cheatsheet = new();
+	private void BonusWindowClick(object sender, EventArgs e) {
+		// check for types that have a Tag property
+		object? w = sender switch {
+			ToolStripItem a => a.Tag,
+			Control a       => a.Tag,
+			_               => null
+		};
 
-			// change the class field back to null when it's disposed
-			cheatsheet.Disposed += (_, _) => {
-				cheatsheet = null;
-			};
+		// show w if it's a form
+		if (w is Form f) {
+			f.Show();
+			f.Focus();
 		}
-
-		cheatsheet.Show();
-		cheatsheet.Focus();
 	}
 
 	private readonly OpenFileDialog openWavDialog = new() {
@@ -836,6 +878,7 @@ public sealed partial class MainForm : Form {
 			SetFile(openWavDialog.FileName);
 		}
 	}
+
 	private void RefreshFileButton_Click(object sender, EventArgs e) {
 		SetFile(FileNameBox.Text);
 	}
@@ -854,13 +897,16 @@ public sealed partial class MainForm : Form {
 		}
 	}
 
+	private void OpenOutputButton_Click(object sender, EventArgs e) {
+		if (OutputDirectory is not null) {
+			Process.Start("explorer.exe", OutputDirectory);
+		}
+	}
+
+
 	/*************************************************************************************************\
 	* Listen area
 	\*************************************************************************************************/
-
-	// TODO eventually add analysis tools for the preview
-	// make them checkboxes with the property and a label for the info?
-	//     [*] Note pitch: A#
 
 	private TestContainer? CurrentBRR = null;
 	private readonly System.Media.SoundPlayer Player = new();
@@ -872,7 +918,7 @@ public sealed partial class MainForm : Form {
 	}
 
 	private SampleClickAction SetClickedBRR() {
-		Player.Stop();
+		StopSamplePreview();
 
 		var newbr = BRRTestBox.SelectedItem as TestContainer;
 
@@ -885,12 +931,12 @@ public sealed partial class MainForm : Form {
 
 		CurrentBRR = newbr;
 
+		waveWindow.TestSample = CurrentBRR;
+
 		Player.Stream?.Dispose();
 
 		if (CurrentBRR is null) {
-			SizeLabel.Text = "-";
-			LoopPointLabel.Text = "-";
-			ExportFinalNameBox.Text = null;
+			ClearPreviewInfo();
 			return SampleClickAction.SampleNull;
 		};
 
@@ -901,7 +947,38 @@ public sealed partial class MainForm : Form {
 		ExportFinalNameBox.Text = CurrentBRR.FileName;
 		Player.Stream = CurrentBRR.WaveFile.AsMemoryStream();
 
+		if (CurrentBRR.EstimatedFrequency is double freq) {
+			EstimatedFrequencyLabel.Text = MusicUtility.GetFormattedFrequency(freq);
+			EstimatedFrequencyLabel.Cursor = Cursors.Default;
+		} else {
+			EstimatedFrequencyLabel.Text = "[No frequency calculated]";
+			EstimatedFrequencyLabel.Cursor = Cursors.Hand;
+		}
+
+		EstimatedFrequencyLabel.Enabled = true;
+
 		return SampleClickAction.SampleChanged;
+	}
+
+	private void EstimatedFrequencyLabel_CursorChanged(object sender, EventArgs e) {
+		if (EstimatedFrequencyLabel.Cursor == Cursors.Hand) {
+			EstimatedFrequencyLabel.ForeColor = SystemColors.HotTrack;
+			EstimatedFrequencyLabel.Font = new Font(EstimatedFrequencyLabel.Font, FontStyle.Underline);
+			EstimatedFrequencyLabel.Enabled = true;
+		} else {
+			EstimatedFrequencyLabel.ForeColor = SystemColors.ControlText;
+			EstimatedFrequencyLabel.Font = new Font(EstimatedFrequencyLabel.Font, FontStyle.Regular);
+			EstimatedFrequencyLabel.Enabled = false;
+		}
+	}
+
+	private void ClearPreviewInfo() {
+		SizeLabel.Text = "-";
+		LoopPointLabel.Text = "-";
+		LoopStartInputLabel.Text = "-";
+		EstimatedFrequencyLabel.Text = "-";
+		EstimatedFrequencyLabel.Cursor = Cursors.Default;
+		ExportFinalNameBox.Text = null;
 	}
 
 	private void PlaySamplePreview() {
@@ -927,29 +1004,161 @@ public sealed partial class MainForm : Form {
 	}
 
 	private void ExportThisButton_Click(object sender, EventArgs e) {
-		CheckForOutputDirectory();
-		CheckForPreviewBRR();
+		try {
+			CheckForOutputDirectory();
+			CheckForPreviewBRR();
+		} catch (Exception x) {
+			ShowError(x.Message);
+			return;
+		}
 
 		string fileName = $"{OutputDirectory}/{ExportFinalNameBox.Text.Trim()}";
+		BRRSample brr = CurrentBRR!.BRRFile;
 
 		if (ExportBRRBox.Checked) {
 			switch (BrrExportTypeBox.SelectedIndex) {
 				case 0:
-					CurrentBRR!.BRRFile.ExportRaw($"{fileName}");
+					brr.Save($"{fileName}.{BRRSample.Extension}");
 					break;
 
 				case 1:
-					CurrentBRR!.BRRFile.ExportHeadered($"{fileName}");
+					brr.ExportWithHeader($"{fileName}.{BRRSample.HeaderedExtension}");
 					break;
 
 				case 2:
-					CurrentBRR!.BRRFile.ExportSuiteSample($"{fileName}.");
+					var bs = new SuiteSample(brr){
+						EncodingFrequency = CurrentBRR.EncodingFrequency,
+						InstrumentName = CurrentBRR.Name
+					};
+					bs.Save($"{fileName}.{SuiteSample.Extension}");
 					break;
 			}
 		}
 
 		if (ExportWAVButton.Checked) {
-			CurrentBRR!.WaveFile.Export($"{fileName}.{WaveContainer.Extension}");
+			CurrentBRR!.WaveFile.Save($"{fileName}.{WaveContainer.Extension}");
+		}
+
+		if (ExportTestSongBox.Checked) {
+			//string path = $"{OutputDirectory}/{ExportFinalNameBox.Text.Trim()}-spctest.spc";
+			string path = $"{OutputDirectory}/_test_.spc";
+
+			//string path2 = $"{OutputDirectory}/{ExportFinalNameBox.Text.Trim()}-spctest.spc";
+			using var fs = new FileStream(path, FileMode.Create, FileAccess.Write);
+
+			ExportSPCFile(CurrentBRR!, fs);
+
+
+			//File.Copy(path, path2, true);
+		}
+	}
+
+	private void EstimatedFrequencyLabel_Click(object sender, EventArgs e) {
+		GetPitchOfCurrentCandidate();
+	}
+
+	private void GetPitchOfCurrentCandidate() {
+		EstimatedFrequencyLabel.Cursor = Cursors.Default;
+
+		if (CurrentBRR is null) {
+			EstimatedFrequencyLabel.Text = "-";
+			EstimatedFrequencyLabel.Enabled = true;
+			return;
+		}
+
+		CurrentBRR.DoFrequencyEstimate();
+
+		if (CurrentBRR.EstimatedFrequency is double f) {
+			EstimatedFrequencyLabel.Text = MusicUtility.GetFormattedFrequency(f);
+		} else {
+			EstimatedFrequencyLabel.Text = "Something went wrong.";
+			EstimatedFrequencyLabel.ForeColor = Color.Red;
+		}
+	}
+
+
+	private void ClearCandidatesBox_Click(object sender, EventArgs e) {
+		ClearFileList();
+	}
+
+	private void BRRTestBox_KeyDown(object sender, KeyEventArgs e) {
+		if (e.Handled) {
+			return;
+		}
+
+		// don't override the base functionality
+		switch (e.KeyCode) {
+			case Keys.Down:
+			case Keys.Up:
+			case Keys.PageUp:
+			case Keys.PageDown:
+			case Keys.Home:
+			case Keys.End:
+				return;
+		}
+
+		e.Handled = true;
+
+		// TODO figure out how to disable letters from navigating
+		// other keys
+		//switch (e.KeyCode) {
+		//	case Keys.A:
+		//		AutoPlayCheckBox.Checked = !AutoPlayCheckBox.Checked;
+		//		return;
+		//}
+
+
+		int index = BRRTestBox.SelectedIndex;
+
+		// the following commands require a valid item to be selected
+		if (index < 0 || CurrentBRR is null) {
+			return;
+		}
+
+		switch (e.KeyCode) {
+			// delete item
+			case Keys.Delete:
+				BRRTestBox.Items.RemoveAt(index);
+
+				int size = BRRTestBox.Items.Count;
+
+				if (size == 0) {
+					index = -1;
+				} else if (index >= size) {
+					index = size - 1;
+				}
+				BRRTestBox.SelectedIndex = index;
+				return;
+
+			// play sample
+			case Keys.Space:
+				PlaySamplePreview();
+				return;
+
+
+			case Keys.Enter: // TODO use this for pitch if can't figure out letters
+				GetPitchOfCurrentCandidate();
+				return;
+
+			// add loop point
+			case Keys.Back:
+				if (CurrentBRR?.LoopSample is not int lppt) return;
+				if (string.IsNullOrWhiteSpace(ScratchBox.Text)) {
+					ScratchBox.Text = $"{lppt}";
+				} else {
+					ScratchBox.Text += $" {lppt}";
+				}
+				return;
+
+			// detect pitch
+			//case Keys.P:
+			//	GetPitchOfCurrentCandidate();
+			//	return;
+			//
+			//// select nothing
+			//case Keys.N:
+			//	BRRTestBox.ClearSelected();
+			//	return;
 		}
 	}
 
@@ -957,5 +1166,93 @@ public sealed partial class MainForm : Form {
 		SampleNull = 0,
 		SampleChanged,
 		SampleUnchanged
+	}
+
+
+
+	// https://wiki.superfamicom.org/spc-and-rsn-file-format
+	private static void ExportSPCFile(TestContainer brr, Stream stream) {
+		if (engineBase is null) {
+			throw new FileNotFoundException("No engine base resource is loaded.");
+		}
+
+		stream.SetLength(0x10200);
+
+		stream.Position = 0x00000;
+
+		WriteString("SNES-SPC700 Sound File Data v0.30", 33);
+
+		stream.WriteByte(26); // $00021
+		stream.WriteByte(26); // $00022
+		stream.WriteByte(26); // $00023 - add ID666 info
+		stream.WriteByte(30); // $00024 - minor version
+
+		stream.WriteByte(0x00); // $00025 - PC low
+		stream.WriteByte(0x03); // $00026 - PC high
+
+		stream.WriteByte(0x00); // $00027 - A
+		stream.WriteByte(0x00); // $00028 - X
+		stream.WriteByte(0x00); // $00029 - Y
+		stream.WriteByte(0x00); // $0002A - PSW
+		stream.WriteByte(0xFF); // $0002B - SP
+
+		stream.WriteByte(0x00); // $0002C - Reserved
+		stream.WriteByte(0x00); // $0002D - Reserved
+
+		WriteString($"{brr.FileName}", 32); // $0002E - song title
+		WriteString("BRR Suite GUI sample test song", 32); // $0004E - game title
+		WriteString("BRR Suite GUI", 16); // $0006E - name of dumper
+		WriteString("Cool song", 32); // $0007E - comments
+		WriteString(DateTime.Now.ToString("MM/dd/yyyy"), 11); // $0009E - dump date (MM/DD/YYYY)
+
+		WriteString("999", 3); // $000A9 - time to play song before fading out
+		WriteString("0123", 4); // $000AC - length of fade
+
+		WriteString("kan, with samples by you!", 32); // $000B1 - artist
+
+		stream.WriteByte(0x01); // $000D1 - channel disables
+		stream.WriteByte(0x00); // $000D2 - emulator
+
+		stream.WriteByte(0x00); // $000D3 - reserved
+
+		PadTo(0x00100);
+
+		stream.Position = 0x00100;
+		stream.Write(engineBase!);
+
+		// remember the position we're at
+		long loop = stream.Position - 0x0100;
+		loop += brr.BRRFile.LoopPoint;
+
+		stream.Write(brr.BRRFile.AsSpan());
+
+		if (brr.BRRFile.IsLooping) {
+			stream.Position = 0x00100 + 0x0202; // navigate to where loop point is saved
+			stream.WriteByte((byte) loop);
+			stream.WriteByte((byte) (loop >> 8));
+		}
+
+		stream.Position = 0x10100;
+		stream.Write(engineBase!, 0x0100, 0x80); // copy registers hidden in the stack
+
+		PadTo(stream.Length); // top off the reserved area
+
+		void WriteString(string s, int len) {
+			if (s.Length < len) {
+				s = s.PadRight(len, ' ');
+			}
+
+			for (int i = 0; i < len; i++) {
+				stream.WriteByte((byte) s[i]);
+			}
+		}
+
+		void PadTo(long pos) {
+			long count = pos - stream.Position;
+
+			for (; count > 0; count--) {
+				stream.WriteByte(0x00);
+			}
+		}
 	}
 }

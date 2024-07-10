@@ -57,6 +57,7 @@ partial class FrequencyWindow {
 		AutoScaleMode = AutoScaleMode.Font;
 		ClientSize = new Size(388, 328);
 		Controls.Add(CheatSheet);
+		DoubleBuffered = true;
 		FormBorderStyle = FormBorderStyle.FixedDialog;
 		Icon = (Icon) resources.GetObject("$this.Icon");
 		MaximizeBox = false;

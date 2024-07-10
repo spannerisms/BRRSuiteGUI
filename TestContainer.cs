@@ -22,21 +22,20 @@ internal sealed class TestContainer {
 	/// <summary>
 	/// Gets the name this object should appear as in the user interface.
 	/// </summary>
-	public string ListName { get; init; }
+	public required string ListName { get; init; }
 
 	/// <summary>
-	/// Gets the preferred file name this container's children should use for export.
+	/// Gets the preferred file name this container's members should use for export.
 	/// </summary>
-	public string FileName { get; init; }
+	public required string FileName { get; init; }
+
+	public required int EncodingFrequency { get; init; }
 
 	/// <summary>
 	/// The sample the source audio was trimmed to
 	/// </summary>
 	public int Trim { get; init; } = 0;
 
-	/// <summary>
-	/// 
-	/// </summary>
 	public decimal ResampleRatio { get; set; } = 1.0M;
 
 	/// <summary>
@@ -54,18 +53,29 @@ internal sealed class TestContainer {
 	/// </summary>
 	public int LoopBlock => BRRFile.LoopBlock;
 
+
+	public double? EstimatedFrequency { get; set; } = null;
+
 	/// <summary>
-	///
+	/// ID for sorting, if necessary
 	/// </summary>
-	/// <param name="name">A simple name for this file.</param>
-	/// <param name="brr"></param>
-	/// <param name="wav"></param>
+	internal long ID { get; init; }
+
+	/// <summary>
+	/// TestContainer
+	/// </summary>
 	public TestContainer(string name, BRRSample brr, WaveContainer wav) {
-		FileName = ListName = Name = name;
+		Name = name;
 		BRRFile = brr;
 		WaveFile = wav;
 	}
 
 	/// <inheritdoc cref="object.ToString()"/>
 	public override string ToString() => ListName;
+
+	public void DoFrequencyEstimate() {
+		if (EstimatedFrequency is not null) return;
+
+		EstimatedFrequency = Aubio.Aubio.DetectPitch(WaveFile, PitchDetectionAlgorithm.YIN);
+	}
 }
