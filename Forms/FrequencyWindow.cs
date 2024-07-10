@@ -64,6 +64,13 @@ public partial class FrequencyWindow : Form {
 		CheatSheet.DataSource = allnotes;
 	}
 
+	protected override void OnFormClosing(FormClosingEventArgs e) {
+		if (e.CloseReason == CloseReason.UserClosing) {
+			Hide();
+			e.Cancel = true;
+		}
+	}
+
 
 	private class NoteValues {
 		public string Name { get; }

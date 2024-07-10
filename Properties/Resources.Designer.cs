@@ -83,6 +83,46 @@ namespace BRRSuiteGUI.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        internal static System.Drawing.Bitmap menubar_about {
+            get {
+                object obj = ResourceManager.GetObject("menubar_about", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        internal static System.Drawing.Bitmap menubar_encodersettings {
+            get {
+                object obj = ResourceManager.GetObject("menubar_encodersettings", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        internal static System.Drawing.Bitmap menubar_freq {
+            get {
+                object obj = ResourceManager.GetObject("menubar_freq", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        internal static System.Drawing.Bitmap menubar_wave {
+            get {
+                object obj = ResourceManager.GetObject("menubar_wave", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         internal static System.Drawing.Bitmap refresh {
             get {
                 object obj = ResourceManager.GetObject("refresh", resourceCulture);
@@ -93,7 +133,7 @@ namespace BRRSuiteGUI.Properties {
         /// <summary>
         ///   Looks up a localized string similar to &lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot; ?&gt;
         ///&lt;meta&gt;
-        ///	&lt;version major=&quot;1&quot; minor=&quot;0&quot; build=&quot;0&quot;/&gt;
+        ///	&lt;version major=&quot;1&quot; minor=&quot;1&quot; build=&quot;0&quot;/&gt;
         ///&lt;/meta&gt;.
         /// </summary>
         internal static string version {

@@ -6,6 +6,8 @@ BRR Suite requires the .NET 8.0 runtime.
 
 [^1]: At least when that user is me.
 
+## Dependencies
+- [aubio](https://aubio.org/)
 
 ## My process
 As of now, this doesn't provide any fancy features over BRRtools. The main reason I wrote this is because my workflow&mdash;which involved batch files to create hundreds or thousands of tests)&mdash;was getting extremely tedious. This application improved pretty much everything about what I was doing. It's faster. It's easier to manage files (mostly due to not needing to make a billion of them). And most of it is in a compact GUI. 
@@ -19,7 +21,7 @@ Here's a rough step-by-step of what I do:
      - Truncate the sample to about 0.1 seconds. Longer files end up too big for my tastes after conversion. BRR Suite (and BRRtools) can truncate the file themselves, but I find it easier to work with when it's smaller.
      - Use Effect>Normalize to remove any DC offset
      - Use Effect>Amplify to make the waveform as loud as possible
-3. Save to audio to a `.wav` file with the name I intend to use with my SNES code.
+3. Save the audio to a `.wav` file with the name I intend to use with my SNES code.
 4. Set the `Trim to` field to a 0 or close-to-zero sample, with the number found using Audacity. This should give enough room for the waveform to loop nicely, but ideally as close to the beginning as possible for a smaller output.
 5. Set the `First loop sample` field to a 0 or close-to-zero sample as close to the beginning as possible that looks like it could smoothly transition in from the selected endpoint.
 6. Click `Create loop candidates`
@@ -46,12 +48,10 @@ Here's a rough step-by-step of what I do:
 **`Cancel`** - While any encoding process is ongoing, most of the interface will be disabled. The progress bar on the bottom of the form displays an estimate for the task. This button can be used to cancel a large task (although it will finish its current encoding or decoding subtask before it can respond to such a request).
 
 ## Menu bar
-### Window
 **`Frequency cheat sheet`** - Opens a window that shows the frequency of notes in concert pitch (A440).
 
-----
+**`Wave window`** - A very rough drawing of the waveform of exported samples. I'll improve this someday maybe.
 
-### Help
 **`Acknowledgements`** - Info about this program's development.
 
 ## Input
@@ -89,16 +89,12 @@ Cons of lower frequencies:
 
 **`Interpolation`** - The algorithm used for resampling.
 - None
-- Linear
-- Sinusoidal
 - Cubic
 - Band-limited (best quality)
 
 **`Create unlooped`** - Creates four unlooped BRRs, one for each of the available encoding frequencies.
 
-**`Treble boost`** - Selects a treble boost filter to compensate for the Gaussian low pass of the SNES.
-
-**`Force silence at start`** - Forces block 0 of the BRR to be all silent samples, allowing the first block of audio to use any filter. This may produce marginally better samples at the expense of size.
+**`Treble boost`** - Selects a treble boost filter to compensate for the Gaussian interpolation of the SNES.
 
 ## Loop search
 The loop search functionality allows you to prospect a large number of candidate loop points starting from a given point.
@@ -145,9 +141,25 @@ As candidates are created, they will populate the candidates list in the `Listen
 > [!TIP]
 > Irrespective of the auto-play setting, double clicking a candidate in the list will play its audio.
 
-
 **`Export BRR`** - Exports a BRR file with the extension `.brr` to the output directory.
 
 BRR samples can be exported in three different formats, which are detailed in the [Library's README](https://github.com/spannerisms/BRRSuite/blob/main/README.md)
 
 **`Export WAV`** - Exports the preview audio with the extension `.wav` to the output directory.
+
+**`Export test .spc`** - Creates a file named `_test_.spc`
+
+This file can then be opened in an SPC player (some emulators such as bsnes+ or Mesen2 support opening SPC files) to quickly preview the sample in a short test song to see how it performs.
+
+The file name is always the same so that it can be easily reloaded without fiddling around in file explorer.
+
+Currently, there is also a very nice violin sample doubling the test song to use as a tuning reference. Eventually I'll add support for more test customizations...
+
+### Candidate input
+The following keys have a function when the candidate list is selected:
+
+- Up / Down - Select new item
+- Space - Play sample preview
+- Delete - Remove candidate from list
+- Backspace - Add attempted loop sample to scratch box
+- Enter - Detect sample pitch
